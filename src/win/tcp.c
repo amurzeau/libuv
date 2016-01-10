@@ -77,6 +77,25 @@ static int uv__tcp_keepalive(uv_tcp_t* handle, SOCKET socket, int enable, unsign
   return 0;
 }
 
+static int uv__tcp_fast_loopback(uv_tcp_t* handle, int enable)
+{
+  SOCKET socket = handle->socket;
+  DWORD bytes;
+  if (WSAIoctl(socket,
+			   SIO_LOOPBACK_FAST_PATH,
+			   &enable,
+			   sizeof(enable),
+			   NULL,
+			   0,
+			   &bytes,
+			   NULL,
+			   NULL) != 0) {
+	return WSAGetLastError();
+  }
+
+  return 0;
+}
+
 
 static int uv_tcp_set_socket(uv_loop_t* loop,
                              uv_tcp_t* handle,
@@ -348,6 +367,8 @@ static int uv_tcp_try_bind(uv_tcp_t* handle,
       return err;
     }
   }
+
+  uv__tcp_fast_loopback(handle, 1);
 
   handle->flags |= UV_HANDLE_BOUND;
 

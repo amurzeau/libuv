@@ -27,6 +27,7 @@
 #include <mswsock.h>
 #include <ws2tcpip.h>
 #include <windows.h>
+#include <mstcpip.h>
 
 #include "winapi.h"
 
@@ -52,6 +53,10 @@
 
 #ifndef SIO_BASE_HANDLE
 # define SIO_BASE_HANDLE 0x48000022
+#endif
+
+#ifndef SIO_LOOPBACK_FAST_PATH
+# define SIO_LOOPBACK_FAST_PATH 0x98000010 
 #endif
 
 /*
