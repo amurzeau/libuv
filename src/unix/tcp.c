@@ -348,6 +348,12 @@ int uv_tcp_keepalive(uv_tcp_t* handle, int on, unsigned int delay) {
 }
 
 
+int uv_tcp_fastpath(uv_tcp_t* handle, int enable) {
+  /* Windows-only feature */
+  return UV_ENOSYS;
+}
+
+
 int uv_tcp_simultaneous_accepts(uv_tcp_t* handle, int enable) {
   if (enable)
     handle->flags &= ~UV_TCP_SINGLE_ACCEPT;

@@ -27,6 +27,7 @@
 
 /* Ntdll function pointers */
 sRtlNtStatusToDosError pRtlNtStatusToDosError;
+sRtlGetVersion pRtlGetVersion;
 sNtDeviceIoControlFile pNtDeviceIoControlFile;
 sNtQueryInformationFile pNtQueryInformationFile;
 sNtSetInformationFile pNtSetInformationFile;
@@ -62,6 +63,13 @@ void uv_winapi_init() {
       ntdll_module,
       "RtlNtStatusToDosError");
   if (pRtlNtStatusToDosError == NULL) {
+    uv_fatal_error(GetLastError(), "GetProcAddress");
+  }
+
+  pRtlGetVersion = (sRtlGetVersion) GetProcAddress(
+      ntdll_module,
+      "RtlGetVersion");
+  if (pRtlGetVersion == NULL) {
     uv_fatal_error(GetLastError(), "GetProcAddress");
   }
 

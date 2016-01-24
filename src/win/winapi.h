@@ -4507,6 +4507,10 @@ typedef struct _SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION {
 # define IO_REPARSE_TAG_SYMLINK (0xA000000CL)
 #endif
 
+#if defined(__MINGW32__) && !defined(__MINGW64_VERSION_MAJOR)
+  typedef struct _OSVERSIONINFOW RTL_OSVERSIONINFOW, *PRTL_OSVERSIONINFOW;
+#endif
+
 typedef VOID (NTAPI *PIO_APC_ROUTINE)
              (PVOID ApcContext,
               PIO_STATUS_BLOCK IoStatusBlock,
@@ -4514,6 +4518,9 @@ typedef VOID (NTAPI *PIO_APC_ROUTINE)
 
 typedef ULONG (NTAPI *sRtlNtStatusToDosError)
               (NTSTATUS Status);
+
+typedef NTSTATUS (NTAPI *sRtlGetVersion)
+                 (PRTL_OSVERSIONINFOW lpVersionInformation);
 
 typedef NTSTATUS (NTAPI *sNtDeviceIoControlFile)
                  (HANDLE FileHandle,
@@ -4686,6 +4693,7 @@ typedef DWORD (WINAPI* sGetFinalPathNameByHandleW)
 
 /* Ntdll function pointers */
 extern sRtlNtStatusToDosError pRtlNtStatusToDosError;
+extern sRtlGetVersion pRtlGetVersion;
 extern sNtDeviceIoControlFile pNtDeviceIoControlFile;
 extern sNtQueryInformationFile pNtQueryInformationFile;
 extern sNtSetInformationFile pNtSetInformationFile;

@@ -54,6 +54,10 @@
 # define SIO_BASE_HANDLE 0x48000022
 #endif
 
+#ifndef SIO_LOOPBACK_FAST_PATH
+# define SIO_LOOPBACK_FAST_PATH 0x98000010
+#endif
+
 /*
  * TDI defines that are only in the DDK.
  * We only need receive flags so far.

@@ -45,6 +45,29 @@ const unsigned int uv_simultaneous_server_accepts = 32;
 /* A zero-size buffer for use by uv_tcp_read */
 static char uv_zero_[] = "";
 
+/* Get the windows version once, used to test fastpath feature compatibility */
+static uv_once_t fastpath_unsupported_guard = UV_ONCE_INIT;
+static BOOL fastpath_supported = FALSE;
+static BOOL fastpath_default_enable = FALSE;
+
+static void uv__init_fastpath_support(void) {
+  RTL_OSVERSIONINFOW osvi = {0};
+  osvi.dwOSVersionInfoSize = sizeof(osvi);
+
+  if(pRtlGetVersion(&osvi) == STATUS_SUCCESS) {
+    /* TCP fast path unsupported if < Windows 6.2 */
+    fastpath_supported =
+          osvi.dwMajorVersion > 6 ||
+          (osvi.dwMajorVersion == 6 && osvi.dwMinorVersion >= 2);
+
+    /* TCP fast path is slower on Windows 10 so enable it by default only on Windows 8/8.1 (>= 6.2 && < 6.4) */
+    fastpath_default_enable =
+          osvi.dwMajorVersion == 6 &&
+          osvi.dwMinorVersion >= 2 && osvi.dwMinorVersion < 4;
+  }
+}
+
+
 static int uv__tcp_nodelay(uv_tcp_t* handle, SOCKET socket, int enable) {
   if (setsockopt(socket,
                  IPPROTO_TCP,
@@ -71,6 +94,34 @@ static int uv__tcp_keepalive(uv_tcp_t* handle, SOCKET socket, int enable, unsign
                            TCP_KEEPALIVE,
                            (const char*)&delay,
                            sizeof delay) == -1) {
+    return WSAGetLastError();
+  }
+
+  return 0;
+}
+
+
+static int uv__tcp_fastpath(uv_tcp_t* handle, int enable) {
+  SOCKET socket = handle->socket;
+  DWORD bytes;
+
+  /* return value of WSAIoctl is not consistent accross Windows versions so check it here */
+  if (!fastpath_supported)
+    return WSAEOPNOTSUPP;
+
+  /* Inihibit TCP fastpath if using ipv6 as it causes crashes with dualstack */
+  if (handle->flags & UV_HANDLE_IPV6)
+    return WSAEOPNOTSUPP;
+
+  if (WSAIoctl(socket,
+               SIO_LOOPBACK_FAST_PATH,
+               &enable,
+               sizeof(enable),
+               NULL,
+               0,
+               &bytes,
+               NULL,
+               NULL) != 0) {
     return WSAGetLastError();
   }
 
@@ -150,6 +201,9 @@ static int uv_tcp_set_socket(uv_loop_t* loop,
     assert(!(handle->flags & UV_HANDLE_IPV6));
   }
 
+  if (fastpath_default_enable && fastpath_supported)
+      handle->flags |= UV_HANDLE_TCP_LOOPBACK_FASTPATH;
+
   return 0;
 }
 
@@ -198,6 +252,9 @@ int uv_tcp_init_ex(uv_loop_t* loop, uv_tcp_t* handle, unsigned int flags) {
     }
 
   }
+
+  /* Check if fastpath is supported */
+  uv_once(&fastpath_unsupported_guard, uv__init_fastpath_support);
 
   return 0;
 }
@@ -583,6 +640,13 @@ int uv_tcp_listen(uv_tcp_t* handle, int backlog, uv_connection_cb cb) {
       return handle->delayed_error;
   }
 
+  if (handle->flags & UV_HANDLE_TCP_LOOPBACK_FASTPATH) {
+    uv__tcp_fastpath(handle, 1);
+
+    /* ignore errors while enabling fast path as it only gives a performance boost */
+    /* and has no effects on failure */
+  }
+
   if (!handle->tcp.serv.func_acceptex) {
     if (!uv_get_acceptex_function(handle->socket, &handle->tcp.serv.func_acceptex)) {
       return WSAEAFNOSUPPORT;
@@ -769,6 +833,17 @@ static int uv_tcp_try_connect(uv_connect_t* req,
       return err;
     if (handle->delayed_error)
       return handle->delayed_error;
+  }
+
+  if (handle->flags & UV_HANDLE_TCP_LOOPBACK_FASTPATH) {
+    /* Only enable fastpath when connecting to a loopback address (ignore IPv6 as it can cause crashes) */
+    if (addrlen == sizeof(uv_addr_ip4_any_)) {
+        const struct sockaddr_in *addr4 = (const struct sockaddr_in*)addr;
+
+        /* loopback in IPv4 is 127.0.0.0/8 */
+        if (addr4->sin_addr.s_net == 127)
+          uv__tcp_fastpath(handle, 1);
+    }
   }
 
   if (!handle->tcp.conn.func_connectex) {
@@ -1264,6 +1339,20 @@ int uv_tcp_keepalive(uv_tcp_t* handle, int enable, unsigned int delay) {
   }
 
   /* TODO: Store delay if handle->socket isn't created yet. */
+
+  return 0;
+}
+
+
+int uv_tcp_fastpath(uv_tcp_t* handle, int enable) {
+  if (!fastpath_supported)
+    return UV_ENOSYS;
+
+  if (enable) {
+    handle->flags |= UV_HANDLE_TCP_LOOPBACK_FASTPATH;
+  } else {
+    handle->flags &= ~UV_HANDLE_TCP_LOOPBACK_FASTPATH;
+  }
 
   return 0;
 }

@@ -42,6 +42,13 @@ TEST_IMPL(tcp_flags) {
   r = uv_tcp_keepalive(&handle, 1, 60);
   ASSERT(r == 0);
 
+  r = uv_tcp_fastpath(&handle, 1);
+#ifdef WIN32
+  ASSERT(r == 0);
+#else
+  ASSERT(r == UV_ENOSYS);
+#endif
+
   uv_close((uv_handle_t*)&handle, NULL);
 
   r = uv_run(loop, UV_RUN_DEFAULT);
